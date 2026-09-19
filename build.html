@@ -78,7 +78,16 @@ As It Was - Harry Styles"></textarea>
     <div class="toolbar" style="margin-top:20px">
       <button class="pri" onclick="makePdf()">Download PDF cards</button>
       <button onclick="exportDeck()">Export deck</button>
-      <span class="hint">Letter, 9 cards per sheet, print double-sided &ldquo;flip on long edge&rdquo;.</span>
+    </div>
+    <div class="toolbar">
+      <select id="layout" onchange="printPrefs()"></select>
+      <span class="hint">Back nudge (mm):</span>
+      <input type="text" id="dx" size="3" value="0" oninput="printPrefs()" title="right +, left -"> &times;
+      <input type="text" id="dy" size="3" value="0" oninput="printPrefs()" title="down +, up -">
+    </div>
+    <p class="hint">Letter paper, double-sided, &ldquo;flip on long edge&rdquo; (Brother: DuplexNoTumble). Cardstock and business-card sheets
+      go through the manual feed one sheet at a time: print odd pages, flip, print even. If the backs land a little off, print one test
+      sheet, measure, and put the correction in the nudge boxes &mdash; it&rsquo;s remembered for this browser.
       <span style="flex:1"></span>
       <button class="danger" onclick="deleteDeck()">Delete deck</button>
     </div>
@@ -211,10 +220,21 @@ async function addSongs() {
 function log(s) { $('log').textContent += s + '\n'; $('log').scrollTop = 1e9; }
 
 // ---------- PDF ----------
-// Letter, 3x3 grid of 63mm square cards. Fronts page then backs page per 9 cards;
-// backs have their columns mirrored so they line up when printed duplex, flipped on the long edge.
-const PAGE_W = 215.9, PAGE_H = 279.4, CARD = 63, COLS = 3, ROWS = 3, PER = COLS * ROWS;
-const MX = (PAGE_W - COLS * CARD) / 2, MY = (PAGE_H - ROWS * CARD) / 2;
+// Letter sheets. Fronts page then backs page per sheet; backs have their columns mirrored so they
+// line up when printed duplex, flipped on the long edge (or re-fed by hand for cardstock).
+const LAYOUTS = {
+  square:   { label: 'Square 63mm, 9 per sheet (cut them out)', w: 63, h: 63, cols: 3, rows: 3, marks: true },
+  business: { label: 'Business cards 3.5×2", 10 per sheet (Avery 5371/8871, Staples)', w: 88.9, h: 50.8, cols: 2, rows: 5, marks: false },
+};
+const PAGE_W = 215.9, PAGE_H = 279.4;
+function layout() {
+  const L = LAYOUTS[$('layout').value] || LAYOUTS.square;
+  return { ...L, mx: (PAGE_W - L.cols * L.w) / 2, my: (PAGE_H - L.rows * L.h) / 2, per: L.cols * L.rows };
+}
+function printPrefs() {
+  const o = { layout: $('layout').value, dx: $('dx').value, dy: $('dy').value };
+  try { localStorage.setItem('tuneflip.print', JSON.stringify(o)); } catch (e) {}
+}
 
 function appBase() {
   const u = $('appUrl').value.trim();
@@ -233,55 +253,55 @@ function drawQr(doc, text, cx, cy, size) {
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
     if (qr.isDark(r, c)) doc.rect(ox + c * cell, oy + r * cell, cell + 0.02, cell + 0.02, 'F');
 }
-function cutMarks(doc) {
+function cutMarks(doc, L) {
   doc.setDrawColor(190); doc.setLineWidth(0.1);
-  for (let c = 0; c <= COLS; c++) doc.line(MX + c * CARD, 0, MX + c * CARD, PAGE_H);
-  for (let r = 0; r <= ROWS; r++) doc.line(0, MY + r * CARD, PAGE_W, MY + r * CARD);
+  for (let c = 0; c <= L.cols; c++) doc.line(L.mx + c * L.w, 0, L.mx + c * L.w, PAGE_H);
+  for (let r = 0; r <= L.rows; r++) doc.line(0, L.my + r * L.h, PAGE_W, L.my + r * L.h);
 }
 function fitText(doc, text, width, maxLines) {
   const lines = doc.splitTextToSize(String(text || ''), width);
   if (lines.length > maxLines) { lines.length = maxLines; lines[maxLines - 1] = lines[maxLines - 1].replace(/.{2}$/, '…'); }
   return lines;
 }
-function drawFront(doc, d, card, x, y) {
-  const cx = x + CARD / 2;
-  doc.setFillColor(d.c2); doc.rect(x, y, CARD, CARD, 'F');
-  doc.setDrawColor(d.c1); doc.setLineWidth(0.6); doc.rect(x + 2.5, y + 2.5, CARD - 5, CARD - 5, 'S');
+function drawFront(doc, d, L, card, x, y) {
+  const cx = x + L.w / 2;
+  doc.setFillColor(d.c2); doc.rect(x, y, L.w, L.h, 'F');
   doc.setTextColor(255);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-  doc.text(fitText(doc, card.artist, CARD - 10, 2), cx, y + 12, { align: 'center' });
+  doc.text(fitText(doc, card.artist, L.w - 10, 2), cx, y + L.h * 0.19, { align: 'center' });
   doc.setFont('helvetica', 'bold'); doc.setFontSize(34);
-  doc.text(String(card.year || '????'), cx, y + 37, { align: 'center' });
+  doc.text(String(card.year || '????'), cx, y + L.h * 0.59, { align: 'center' });
   doc.setFont('helvetica', 'italic'); doc.setFontSize(10);
-  doc.text(fitText(doc, card.title, CARD - 10, 2), cx, y + 49, { align: 'center' });
+  doc.text(fitText(doc, card.title, L.w - 10, 2), cx, y + L.h * 0.78, { align: 'center' });
 }
-function drawBack(doc, d, card, x, y) {
-  const cx = x + CARD / 2;
-  doc.setFillColor(255); doc.rect(x, y, CARD, CARD, 'F');
-  doc.setDrawColor(d.c1); doc.setLineWidth(0.6); doc.rect(x + 2.5, y + 2.5, CARD - 5, CARD - 5, 'S');
-  drawQr(doc, songUrl(d, card), cx, y + CARD / 2 - 3, 40);
-  doc.setTextColor(d.c2); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-  doc.text(d.name, cx, y + CARD - 7, { align: 'center' });
+function drawBack(doc, d, L, card, x, y) {
+  const cx = x + L.w / 2, size = Math.min(40, Math.min(L.w, L.h) - 12);
+  doc.setFillColor(255); doc.rect(x, y, L.w, L.h, 'F');
+  drawQr(doc, songUrl(d, card), cx, y + L.h / 2 - 2, size);
+  doc.setTextColor(d.c2); doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+  doc.text(d.name, cx, y + L.h - 4, { align: 'center' });
 }
 function makePdf() {
   const d = deck();
   if (!d.tracks.length) { alert('Add some songs first.'); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
-  const cards = d.tracks;
-  for (let p = 0; p < cards.length; p += PER) {
-    const chunk = cards.slice(p, p + PER);
+  const L = layout(), dx = parseFloat($('dx').value) || 0, dy = parseFloat($('dy').value) || 0;
+  for (let p = 0; p < d.tracks.length; p += L.per) {
+    const chunk = d.tracks.slice(p, p + L.per);
     if (p > 0) doc.addPage();
-    chunk.forEach((card, i) => drawFront(doc, d, card, MX + (i % COLS) * CARD, MY + Math.floor(i / COLS) * CARD));
-    cutMarks(doc);
+    chunk.forEach((card, i) => drawFront(doc, d, L, card, L.mx + (i % L.cols) * L.w, L.my + Math.floor(i / L.cols) * L.h));
+    if (L.marks) cutMarks(doc, L);
     doc.addPage();
-    chunk.forEach((card, i) => drawBack(doc, d, card, MX + (COLS - 1 - i % COLS) * CARD, MY + Math.floor(i / COLS) * CARD));
-    cutMarks(doc);
+    chunk.forEach((card, i) => drawBack(doc, d, L, card, L.mx + (L.cols - 1 - i % L.cols) * L.w + dx, L.my + Math.floor(i / L.cols) * L.h + dy));
+    if (L.marks) cutMarks(doc, L);
   }
   doc.save(safeName(d.name) + ' cards.pdf');
 }
 
 // ---------- init ----------
+$('layout').innerHTML = Object.entries(LAYOUTS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+try { const o = JSON.parse(localStorage.getItem('tuneflip.print') || '{}'); if (o.layout) $('layout').value = o.layout; if (o.dx) $('dx').value = o.dx; if (o.dy) $('dy').value = o.dy; } catch (e) {}
 $('appUrl').value = location.protocol === 'file:' ? 'https://zymsys.github.io/tuneflip/'
   : location.origin + location.pathname.replace(/build\.html$/, '');
 load(); sel = decks[0] ? decks[0].id : null; render();
