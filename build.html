@@ -223,17 +223,17 @@ async function resolveLine(line) {
   // then take the earliest release (closest to the original year). A miss beats a wrong song.
   const norm = x => (x || '').toLowerCase().replace(/[^a-z0-9\u00c0-\uffff]+/g, '');
   const title = norm(parts[0]);
-  const d = await jsonp('https://itunes.apple.com/search?term=' + encodeURIComponent(line) + '&entity=song&limit=25');
+  const d = await jsonp('https://itunes.apple.com/search?term=' + encodeURIComponent(line) + '&entity=song&limit=50');
   const junk = /\b(live|remix|karaoke|instrumental|acoustic|sped up|slowed|cover|tribute|demo|edit|version)\b/i;
   let rs = d.results.filter(r => { const n = norm(r.trackName); return n.includes(title) || (title.length > 3 && title.includes(n)); });
   if (artist) {
     const key = artist.split(/\s*(?:feat\.?|ft\.?|&|,|x)\s+/i)[0];
-    const byArtist = rs.filter(r => norm(r.artistName).includes(norm(key)));
-    if (byArtist.length) rs = byArtist;
+    rs = rs.filter(r => norm(r.artistName).includes(norm(key)));   // wrong artist = not found
   }
   const clean = rs.filter(r => !junk.test(r.trackName));
   if (clean.length) rs = clean;
-  rs.sort((a, b) => (a.releaseDate || '').localeCompare(b.releaseDate || ''));
+  const exact = r => norm(r.trackName) === title ? 0 : 1;
+  rs.sort((a, b) => exact(a) - exact(b) || (a.releaseDate || '').localeCompare(b.releaseDate || ''));
   return rs.slice(0, 1).map(toTrack);
 }
 
