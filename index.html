@@ -40,6 +40,7 @@
 <body>
 
 <div class="screen on" id="home">
+  <img id="brandLogo" alt="" style="display:none;max-width:220px;max-height:220px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.3))">
   <h1 id="brandName">TuneFlip</h1>
   <p>Mystery song player</p>
   <button class="btn" id="startBtn" onclick="startScan()">SCAN A CARD</button>
@@ -78,7 +79,7 @@ function loadBrand() {
   let b = { ...DEFAULT_BRAND };
   try { Object.assign(b, JSON.parse(localStorage.getItem('brand') || '{}')); } catch (e) {}
   const q = new URLSearchParams(location.search);
-  if (q.get('name')) b.name = q.get('name');
+  if (q.get('name')) { b.name = q.get('name'); b.logo = q.get('logo') || ''; }   // a deck without a logo clears an old one
   if (/^[0-9a-f]{6}$/i.test(q.get('c1') || '')) b.c1 = '#' + q.get('c1');
   if (/^[0-9a-f]{6}$/i.test(q.get('c2') || '')) b.c2 = '#' + q.get('c2');
   try { localStorage.setItem('brand', JSON.stringify(b)); } catch (e) {}
@@ -89,6 +90,11 @@ document.documentElement.style.setProperty('--c1', brand.c1);
 document.documentElement.style.setProperty('--c2', brand.c2);
 document.getElementById('brandName').textContent = brand.name;
 document.title = brand.name;
+if (brand.logo) {
+  const img = document.getElementById('brandLogo');
+  img.onload = () => { img.style.display = ''; document.getElementById('brandName').style.display = 'none'; };
+  img.src = new URL(brand.logo, location.href).href;
+}
 
 // ---------- helpers ----------
 const $ = id => document.getElementById(id);

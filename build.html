@@ -59,7 +59,12 @@
         <input type="color" id="dC2" oninput="setDeck('c2', this.value)">
       </div>
     </div>
-    <div class="field" style="margin-bottom:14px"><label>Player app URL (goes into every QR code)</label><input type="url" id="appUrl"></div>
+    <div class="grid">
+      <div class="field"><label>Player app URL (goes into every QR code)</label><input type="url" id="appUrl"></div>
+      <div class="field"><label>Logo &nbsp;<span class="hint">file name next to index.html, or a full URL</span></label>
+        <div style="display:flex;gap:10px;align-items:center"><input type="text" id="dLogo" placeholder="kaepop.png" oninput="setDeck('logo', this.value); showLogo()">
+        <img id="logoPreview" style="height:36px;display:none"></div></div>
+    </div>
 
     <label>Add songs &mdash; one per line: Apple Music song links, Apple Music album links (adds every track), or <code>Title - Artist</code></label>
     <textarea id="addBox" rows="5" placeholder="https://music.apple.com/ca/album/cruel-summer/1440935467?i=1440935475
@@ -147,7 +152,7 @@ function renderEditor() {
   const d = deck();
   $('editor').style.display = d ? '' : 'none';
   if (!d) return;
-  $('dName').value = d.name; $('dC1').value = d.c1; $('dC2').value = d.c2;
+  $('dName').value = d.name; $('dC1').value = d.c1; $('dC2').value = d.c2; $('dLogo').value = d.logo || ''; showLogo();
   renderTracks();
 }
 function renderTracks() {
@@ -157,6 +162,29 @@ function renderTracks() {
      <td><input type="text" value="${esc(t.artist)}" oninput="setTrack(${i},'artist',this.value)"></td>
      <td class="y"><input type="text" value="${esc(t.year)}" oninput="setTrack(${i},'year',this.value)"></td>
      <td class="x"><button onclick="removeTrack(${i})" title="Remove">&times;</button></td></tr>`).join('');
+}
+function logoHref(d) { return d.logo ? new URL(d.logo, appBase()).href : ''; }
+function showLogo() {
+  const d = deck(), img = $('logoPreview');
+  img.style.display = 'none';
+  if (!d.logo) return;
+  img.onload = () => { img.style.display = ''; }; img.onerror = () => { img.style.display = 'none'; };
+  img.src = logoHref(d);
+}
+// Load the logo into a canvas over a solid background, so jsPDF never has to deal with alpha.
+function loadLogo(d, bg) {
+  return new Promise(resolve => {
+    if (!d.logo) return resolve(null);
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const k = Math.min(1, 400 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = img.width * k; c.height = img.height * k;
+      const x = c.getContext('2d'); x.fillStyle = bg; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+      try { resolve({ data: c.toDataURL('image/jpeg', 0.9), w: c.width, h: c.height }); } catch (e) { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = logoHref(d);
+  });
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
@@ -243,7 +271,7 @@ function appBase() {
 // Every card carries the deck branding, so any card can be the first one scanned.
 function songUrl(d, t) {
   return appBase() + '?name=' + encodeURIComponent(d.name) + '&c1=' + d.c1.slice(1) + '&c2=' + d.c2.slice(1) +
-    '#t=' + t.id + '&y=' + encodeURIComponent(t.year || '');
+    (d.logo ? '&logo=' + encodeURIComponent(d.logo) : '') + '#t=' + t.id + '&y=' + encodeURIComponent(t.year || '');
 }
 
 function drawQr(doc, text, cx, cy, size) {
@@ -274,16 +302,29 @@ function drawFront(doc, d, L, card, x, y) {
   doc.setFont('helvetica', 'italic'); doc.setFontSize(10);
   doc.text(fitText(doc, card.title, L.w - 10, 2), cx, y + L.h * 0.78, { align: 'center' });
 }
-function drawBack(doc, d, L, card, x, y) {
-  const cx = x + L.w / 2, size = Math.min(40, Math.min(L.w, L.h) - 12);
+function drawBack(doc, d, L, card, x, y, logo) {
+  const size = Math.min(40, Math.min(L.w, L.h) - 12);
   doc.setFillColor(255); doc.rect(x, y, L.w, L.h, 'F');
-  drawQr(doc, songUrl(d, card), cx, y + L.h / 2 - 2, size);
   doc.setTextColor(d.c2); doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
-  doc.text(d.name, cx, y + L.h - 4, { align: 'center' });
+  if (logo && L.w > L.h + 20) {                       // wide card: logo left, QR right
+    const box = 30, qs = 36, k = Math.min(box / logo.w, box / logo.h), lw = logo.w * k, lh = logo.h * k;
+    doc.addImage(logo.data, 'JPEG', x + 6 + (box - lw) / 2, y + (L.h - lh) / 2, lw, lh);
+    drawQr(doc, songUrl(d, card), x + L.w - 6 - qs / 2, y + L.h / 2 - 2, qs);
+    doc.text(d.name, x + L.w - 6 - qs / 2, y + L.h - 4, { align: 'center' });
+  } else if (logo) {                                  // square card: smaller QR, logo underneath
+    const qs = size - 6, box = 12, k = Math.min((L.w - 10) / logo.w, box / logo.h), lw = logo.w * k, lh = logo.h * k;
+    drawQr(doc, songUrl(d, card), x + L.w / 2, y + 6 + qs / 2, qs);
+    doc.addImage(logo.data, 'JPEG', x + (L.w - lw) / 2, y + L.h - 4 - lh, lw, lh);
+  } else {
+    drawQr(doc, songUrl(d, card), x + L.w / 2, y + L.h / 2 - 2, size);
+    doc.text(d.name, x + L.w / 2, y + L.h - 4, { align: 'center' });
+  }
 }
-function makePdf() {
+async function makePdf() {
   const d = deck();
   if (!d.tracks.length) { alert('Add some songs first.'); return; }
+  const logo = await loadLogo(d, '#ffffff');
+  if (d.logo && !logo) alert('Could not load the logo from ' + logoHref(d) + ' \u2014 printing without it.');
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
   const L = layout(), dx = parseFloat($('dx').value) || 0, dy = parseFloat($('dy').value) || 0;
@@ -293,7 +334,7 @@ function makePdf() {
     chunk.forEach((card, i) => drawFront(doc, d, L, card, L.mx + (i % L.cols) * L.w, L.my + Math.floor(i / L.cols) * L.h));
     if (L.marks) cutMarks(doc, L);
     doc.addPage();
-    chunk.forEach((card, i) => drawBack(doc, d, L, card, L.mx + (L.cols - 1 - i % L.cols) * L.w + dx, L.my + Math.floor(i / L.cols) * L.h + dy));
+    chunk.forEach((card, i) => drawBack(doc, d, L, card, L.mx + (L.cols - 1 - i % L.cols) * L.w + dx, L.my + Math.floor(i / L.cols) * L.h + dy, logo));
     if (L.marks) cutMarks(doc, L);
   }
   doc.save(safeName(d.name) + ' cards.pdf');
