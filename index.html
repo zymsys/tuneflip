@@ -57,7 +57,7 @@
 
 <div class="screen" id="play">
   <div class="big">&#127911;</div>
-  <h1>Flip the phone!</h1>
+  <h1>Listen &amp; guess!</h1>
   <p id="status"></p>
   <div class="bar"><div id="prog"></div></div>
   <div class="row">
@@ -195,8 +195,7 @@ function toggleReveal() {
   if (!i) return;
   el.innerHTML = (i.artworkUrl100 ? '<img src="' + i.artworkUrl100.replace('100x100', '300x300') + '"><br>' : '') +
     '<b>' + i.trackName + '</b><br>' + i.artistName + '<br>' +
-    (current.year ? 'Year on card: <b>' + current.year + '</b><br>' : '') +
-    '<small>Apple lists ' + (i.releaseDate || '').slice(0, 4) + ' for this recording</small>';
+    '<span style="font-size:1.6rem;font-weight:800">' + (current.year || (i.releaseDate || '').slice(0, 4)) + '</span>';
   el.style.display = 'block';
 }
 audio.addEventListener('timeupdate', () => {
@@ -210,7 +209,7 @@ if (fromHash) {
   current = fromHash;
   $('startBtn').style.display = 'none';
   $('playBtn').style.display = '';
-  $('homeHint').textContent = 'Tap play, then flip the phone face down.';
+  $('homeHint').textContent = 'Tap play to hear the mystery song.';
 }
 function playCurrent() { unlock(); playTrack(current); }
 </script>
