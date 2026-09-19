@@ -66,6 +66,7 @@
   <p id="status"></p>
   <div class="bar"><div id="prog"></div></div>
   <div class="row">
+    <button class="btn sm" id="pauseBtn" onclick="togglePause()">&#10074;&#10074; Pause</button>
     <button class="btn sm" onclick="replay()">&#8635; Replay</button>
     <button class="btn sm" onclick="toggleReveal()">&#128064; Reveal</button>
   </div>
@@ -155,6 +156,7 @@ function unlock() {
 // ---------- scanning ----------
 async function startScan() {
   unlock();
+  audio.pause();                                       // scanning the next card ends the current song
   show('scan');
   $('scanStatus').textContent = 'Starting camera…';
   try {
@@ -227,6 +229,9 @@ async function playTrack(t) {
   }
 }
 function replay() { if (audio.src) { audio.currentTime = 0; audio.play(); } }
+function togglePause() { if (audio.paused) audio.play(); else audio.pause(); }
+audio.addEventListener('play', () => { $('pauseBtn').innerHTML = '&#10074;&#10074; Pause'; });
+audio.addEventListener('pause', () => { $('pauseBtn').innerHTML = '&#9654; Resume'; });
 function toggleReveal() {
   const el = $('reveal');
   if (el.style.display === 'block') { el.style.display = 'none'; return; }

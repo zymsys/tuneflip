@@ -396,7 +396,7 @@ async function makePdf() {
     if (L.marks) cutMarks(doc, L);
     doc.addPage();
     chunk.forEach((card, i) => drawBack(doc, d, L, card, L.mx + (L.cols - 1 - i % L.cols) * L.w + dx, L.my + Math.floor(i / L.cols) * L.h + dy, logo));
-    if (L.marks) cutMarks(doc, L);
+    // no cut marks on the backs: cut along the fronts and a little duplex drift on the QR side doesn't matter
   }
   doc.save(safeName(d.name) + ' cards.pdf');
 }
