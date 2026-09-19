@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Deck Builder</title>
+<title>TuneFlip Deck Builder</title>
 <style>
   * { box-sizing: border-box; }
   body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; margin: 0; background: #f4f4f8; color: #222; }
@@ -37,7 +37,7 @@
 </style>
 </head>
 <body>
-<header><h1>Deck Builder</h1><small>Decks are saved in this browser only &mdash; use Export to back up.</small></header>
+<header><h1>TuneFlip Deck Builder</h1><small>Decks are saved in this browser only &mdash; use Export to back up.</small></header>
 <div class="wrap">
   <aside>
     <div id="deckList"></div>
@@ -88,7 +88,7 @@ As It Was - Harry Styles"></textarea>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 // ---------- storage ----------
-const KEY = 'hitster.decks';
+const KEY = 'tuneflip.decks';
 let decks = [], sel = null;
 function load() { try { decks = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { decks = []; } }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(decks)); } catch (e) { alert('Could not save: ' + e.message); } }
@@ -110,7 +110,7 @@ function removeTrack(i) { deck().tracks.splice(i, 1); save(); renderTracks(); }
 function exportDecks() {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(decks, null, 2)], { type: 'application/json' }));
-  a.download = 'hitster-decks.json'; a.click();
+  a.download = 'tuneflip-decks.json'; a.click();
 }
 function importDecks(file) {
   if (!file) return;
@@ -277,7 +277,7 @@ function makePdf() {
 }
 
 // ---------- init ----------
-$('appUrl').value = location.protocol === 'file:' ? 'https://zymsys.github.io/hitster/'
+$('appUrl').value = location.protocol === 'file:' ? 'https://zymsys.github.io/tuneflip/'
   : location.origin + location.pathname.replace(/build\.html$/, '');
 load(); sel = decks[0] ? decks[0].id : null; render();
 </script>

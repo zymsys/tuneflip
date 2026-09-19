@@ -1,16 +1,18 @@
-# Kae-Pop / DIY Hitster — Plan (2026-09-19)
+# TuneFlip (Kae-Pop) — Plan (2026-09-19)
 
-Static site on GitHub Pages (`kaepop/hitster` → https://kaepop.github.io/hitster/).
+A Hitster-style guess-the-year card game, built as a gift. Not affiliated with Hitster.
+
+Static site on GitHub Pages (`zymsys/tuneflip` → https://zymsys.github.io/tuneflip/ (Carolyn can fork to her own account)).
 Vanilla HTML/JS, no build step. Nothing server-side; decks live in the builder's localStorage.
 
 ## Core design
 
-- **Song card QR** = `https://kaepop.github.io/hitster/#t=<itunesTrackId>&y=<year>`
+- **Song card QR** = `https://zymsys.github.io/tuneflip/#t=<itunesTrackId>&y=<year>`
   - In-app scanner parses `t` and `y`; native camera scan also works (opens app → tap-to-play fallback).
   - Player phone does live `https://itunes.apple.com/lookup?id=<t>&callback=cb` (JSONP, no key, no CORS)
     → `previewUrl` (30s m4a), `trackName`, `artistName`, `artworkUrl100`.
   - Player needs **no deck data**. Cards are self-describing.
-- **App card QR** = `https://kaepop.github.io/hitster/?name=Kae-Pop&c1=ff007f&c2=2b1055&icon=🎤`
+- **App card QR** = `https://zymsys.github.io/tuneflip/?name=Kae-Pop&c1=ff007f&c2=2b1055&icon=🎤`
   - Player app saves branding to localStorage as "current deck". Logo image won't fit a QR → emoji/preset.
 - **Year**: iTunes `releaseDate` is the *album version's* date (remasters/compilations lie).
   Builder shows it as default, user overrides per track. Override is printed on card AND baked into QR.

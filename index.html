@@ -40,7 +40,7 @@
 <body>
 
 <div class="screen on" id="home">
-  <h1 id="brandName">Hitster</h1>
+  <h1 id="brandName">TuneFlip</h1>
   <p>Mystery song player</p>
   <button class="btn" id="startBtn" onclick="startScan()">SCAN A CARD</button>
   <button class="btn" id="playBtn" onclick="playCurrent()" style="display:none">&#9654; PLAY SONG</button>
@@ -72,7 +72,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
 <script>
 // ---------- branding (from ?name=&c1=&c2= on the deck's app card, remembered per phone) ----------
-const DEFAULT_BRAND = { name: 'Hitster', c1: '#ff007f', c2: '#2b1055' };
+const DEFAULT_BRAND = { name: 'TuneFlip', c1: '#ff007f', c2: '#2b1055' };
 function loadBrand() {
   let b = { ...DEFAULT_BRAND };
   try { Object.assign(b, JSON.parse(localStorage.getItem('brand') || '{}')); } catch (e) {}
