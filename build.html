@@ -219,15 +219,20 @@ async function resolveLine(line) {
     const d = await jsonp('https://itunes.apple.com/lookup?id=' + m[1] + '&entity=song');
     return d.results.filter(r => r.wrapperType === 'track').map(toTrack);
   }
-  // Free-text: fetch several, skip live/remix/karaoke variants, prefer the earliest release (closest to the original year)
-  const d = await jsonp('https://itunes.apple.com/search?term=' + encodeURIComponent(line) + '&entity=song&limit=8');
+  // Free-text: the title must match, prefer the named artist, skip live/remix/karaoke variants,
+  // then take the earliest release (closest to the original year). A miss beats a wrong song.
+  const norm = x => (x || '').toLowerCase().replace(/[^a-z0-9\u00c0-\uffff]+/g, '');
+  const title = norm(parts[0]);
+  const d = await jsonp('https://itunes.apple.com/search?term=' + encodeURIComponent(line) + '&entity=song&limit=25');
   const junk = /\b(live|remix|karaoke|instrumental|acoustic|sped up|slowed|cover|tribute|demo|edit|version)\b/i;
-  let rs = d.results.filter(r => !junk.test(r.trackName));
-  if (!rs.length) rs = d.results;
-  if (artist) {                                        // prefer results by the named artist
-    const byArtist = rs.filter(r => (r.artistName || '').toLowerCase().includes(artist.split(/\s*(?:feat\.?|ft\.?|&|,|x)\s+/i)[0]));
+  let rs = d.results.filter(r => { const n = norm(r.trackName); return n.includes(title) || (title.length > 3 && title.includes(n)); });
+  if (artist) {
+    const key = artist.split(/\s*(?:feat\.?|ft\.?|&|,|x)\s+/i)[0];
+    const byArtist = rs.filter(r => norm(r.artistName).includes(norm(key)));
     if (byArtist.length) rs = byArtist;
   }
+  const clean = rs.filter(r => !junk.test(r.trackName));
+  if (clean.length) rs = clean;
   rs.sort((a, b) => (a.releaseDate || '').localeCompare(b.releaseDate || ''));
   return rs.slice(0, 1).map(toTrack);
 }
