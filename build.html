@@ -45,7 +45,7 @@
       <button onclick="newDeck()">+ New deck</button>
     </div>
     <div class="toolbar">
-      <button onclick="exportDecks()">Export</button>
+      <button onclick="exportDecks()">Export all</button>
       <button onclick="document.getElementById('importFile').click()">Import</button>
       <input type="file" id="importFile" accept=".json" style="display:none" onchange="importDecks(this.files[0])">
     </div>
@@ -77,6 +77,7 @@ As It Was - Harry Styles"></textarea>
 
     <div class="toolbar" style="margin-top:20px">
       <button class="pri" onclick="makePdf()">Download PDF cards</button>
+      <button onclick="exportDeck()">Export deck</button>
       <span class="hint">Letter, 9 cards per sheet, print double-sided &ldquo;flip on long edge&rdquo;.</span>
       <span style="flex:1"></span>
       <button class="danger" onclick="deleteDeck()">Delete deck</button>
@@ -107,15 +108,19 @@ function setDeck(k, v) { deck()[k] = v; save(); renderList(); }
 function setTrack(i, k, v) { deck().tracks[i][k] = v; save(); }
 function removeTrack(i) { deck().tracks.splice(i, 1); save(); renderTracks(); }
 
-function exportDecks() {
+function download(name, data) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(decks, null, 2)], { type: 'application/json' }));
-  a.download = 'tuneflip-decks.json'; a.click();
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  a.download = name; a.click();
 }
+const safeName = s => s.replace(/[^\w\- ]+/g, '').trim() || 'deck';
+function exportDecks() { download('tuneflip-decks.json', decks); }
+function exportDeck() { download(safeName(deck().name) + '.json', deck()); }
 function importDecks(file) {
   if (!file) return;
   file.text().then(t => {
-    const incoming = JSON.parse(t);
+    let incoming = JSON.parse(t);
+    if (!Array.isArray(incoming)) incoming = [incoming];   // a single-deck export
     for (const d of incoming) { const i = decks.findIndex(x => x.id === d.id); if (i >= 0) decks[i] = d; else decks.push(d); }
     save(); render();
   }).catch(e => alert('Import failed: ' + e.message));
@@ -273,7 +278,7 @@ function makePdf() {
     chunk.forEach((card, i) => drawBack(doc, d, card, MX + (COLS - 1 - i % COLS) * CARD, MY + Math.floor(i / COLS) * CARD));
     cutMarks(doc);
   }
-  doc.save(d.name.replace(/[^\w\- ]+/g, '') + ' cards.pdf');
+  doc.save(safeName(d.name) + ' cards.pdf');
 }
 
 // ---------- init ----------
