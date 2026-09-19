@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Mystery Song Player</title>
+<style>
+  :root { --c1: #ff007f; --c2: #2b1055; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: linear-gradient(160deg, var(--c2), var(--c1));
+    color: #fff; margin: 0; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 20px;
+  }
+  .screen { display: none; width: 100%; max-width: 480px; }
+  .screen.on { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  h1 { font-size: 2.4rem; margin: 0; text-shadow: 0 2px 8px rgba(0,0,0,.4); }
+  p { margin: 0; font-size: 1.1rem; opacity: .9; }
+  .btn {
+    background: #fff; color: var(--c2); font-size: 1.4rem; font-weight: 800;
+    padding: 18px 40px; border: none; border-radius: 50px; cursor: pointer;
+    box-shadow: 0 6px 20px rgba(0,0,0,.35); letter-spacing: 1px;
+  }
+  .btn:active { transform: scale(.95); }
+  .btn.sm { font-size: 1rem; padding: 12px 22px; background: rgba(255,255,255,.2); color: #fff; box-shadow: none; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  #video { width: 100%; max-width: 480px; border-radius: 16px; background: #000; aspect-ratio: 3/4; object-fit: cover; }
+  #canvas { display: none; }
+  .bar { width: 100%; height: 10px; background: rgba(255,255,255,.25); border-radius: 5px; overflow: hidden; }
+  .bar div { height: 100%; width: 0; background: #fff; transition: width .25s linear; }
+  .big { font-size: 5rem; line-height: 1; }
+  #reveal { background: rgba(0,0,0,.35); border-radius: 16px; padding: 16px; width: 100%; display: none; }
+  #reveal img { width: 120px; border-radius: 10px; }
+  #status { min-height: 1.4em; }
+  .err { color: #ffd6d6; }
+</style>
+</head>
+<body>
+
+<div class="screen on" id="home">
+  <h1 id="brandName">Hitster</h1>
+  <p>Mystery song player</p>
+  <button class="btn" id="startBtn" onclick="startScan()">SCAN A CARD</button>
+  <button class="btn" id="playBtn" onclick="playCurrent()" style="display:none">&#9654; PLAY SONG</button>
+  <p id="homeHint" style="font-size:.9rem">Scanning uses your camera. Point it at the QR on the back of a card.</p>
+</div>
+
+<div class="screen" id="scan">
+  <p>Point at the QR code&hellip;</p>
+  <video id="video" playsinline muted></video>
+  <canvas id="canvas"></canvas>
+  <button class="btn sm" onclick="stopScan(); show('home')">Cancel</button>
+</div>
+
+<div class="screen" id="play">
+  <div class="big">&#127911;</div>
+  <h1>Flip the phone!</h1>
+  <p id="status"></p>
+  <div class="bar"><div id="prog"></div></div>
+  <div class="row">
+    <button class="btn sm" onclick="replay()">&#8635; Replay</button>
+    <button class="btn sm" onclick="toggleReveal()">&#128064; Reveal</button>
+  </div>
+  <button class="btn" onclick="startScan()">SCAN NEXT</button>
+  <div id="reveal"></div>
+</div>
+
+<audio id="audio" preload="auto"></audio>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script>
+// ---------- branding (from ?name=&c1=&c2= on the deck's app card, remembered per phone) ----------
+const DEFAULT_BRAND = { name: 'Hitster', c1: '#ff007f', c2: '#2b1055' };
+function loadBrand() {
+  let b = { ...DEFAULT_BRAND };
+  try { Object.assign(b, JSON.parse(localStorage.getItem('brand') || '{}')); } catch (e) {}
+  const q = new URLSearchParams(location.search);
+  if (q.get('name')) b.name = q.get('name');
+  if (/^[0-9a-f]{6}$/i.test(q.get('c1') || '')) b.c1 = '#' + q.get('c1');
+  if (/^[0-9a-f]{6}$/i.test(q.get('c2') || '')) b.c2 = '#' + q.get('c2');
+  try { localStorage.setItem('brand', JSON.stringify(b)); } catch (e) {}
+  return b;
+}
+const brand = loadBrand();
+document.documentElement.style.setProperty('--c1', brand.c1);
+document.documentElement.style.setProperty('--c2', brand.c2);
+document.getElementById('brandName').textContent = brand.name;
+document.title = brand.name;
+
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const audio = $('audio'), video = $('video'), canvas = $('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
+let stream = null, current = null, lastCode = '', lastCodeAt = 0;
+
+function show(id) { document.querySelectorAll('.screen').forEach(e => e.classList.toggle('on', e.id === id)); }
+
+// A card QR is "<app url>#t=<itunes track id>&y=<year>". Accept the bare "t=..." too.
+function parseCode(s) {
+  const t = s.match(/[#?&]t=(\d+)/) || s.match(/^t=(\d+)/);
+  if (!t) return null;
+  const y = s.match(/[#?&]y=(\d{4})/);
+  return { id: t[1], year: y ? y[1] : null };
+}
+
+// iTunes lookup via JSONP (the API doesn't send CORS headers, but supports callback=)
+function jsonp(url) {
+  return new Promise((resolve, reject) => {
+    const cb = 'cb' + Date.now() + Math.floor(Math.random() * 1e6);
+    const s = document.createElement('script');
+    const done = () => { delete window[cb]; s.remove(); clearTimeout(timer); };
+    const timer = setTimeout(() => { done(); reject(new Error('Lookup timed out')); }, 10000);
+    window[cb] = d => { done(); resolve(d); };
+    s.onerror = () => { done(); reject(new Error('Lookup failed')); };
+    s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cb;
+    document.head.appendChild(s);
+  });
+}
+
+// iOS only allows audio.play() after a tap. Play a silent clip on the first tap; after that
+// swapping src + play() works without another gesture.
+let unlocked = false;
+function unlock() {
+  if (unlocked) return;
+  unlocked = true;
+  audio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+  audio.play().catch(() => {});
+}
+
+// ---------- scanning ----------
+async function startScan() {
+  unlock();
+  show('scan');
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+  } catch (e) {
+    show('home');
+    $('homeHint').innerHTML = '<span class="err">Camera not available: ' + e.message + '</span>';
+    return;
+  }
+  video.srcObject = stream;
+  await video.play();
+  requestAnimationFrame(tick);
+}
+function stopScan() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+}
+function tick() {
+  if (!stream) return;
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    const scale = Math.min(1, 640 / video.videoWidth);   // jsQR is slow on full-res frames
+    canvas.width = video.videoWidth * scale; canvas.height = video.videoHeight * scale;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+    if (code && code.data) {
+      const now = Date.now();
+      if (code.data !== lastCode || now - lastCodeAt > 3000) {
+        lastCode = code.data; lastCodeAt = now;
+        const t = parseCode(code.data);
+        if (t) { stopScan(); playTrack(t); return; }
+      }
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+// ---------- playback ----------
+async function playTrack(t) {
+  current = t;
+  show('play');
+  $('reveal').style.display = 'none';
+  $('prog').style.width = '0';
+  $('status').textContent = 'Finding song…';
+  try {
+    const d = await jsonp('https://itunes.apple.com/lookup?id=' + t.id);
+    const r = (d.results || []).find(x => x.wrapperType === 'track');
+    if (!r || !r.previewUrl) throw new Error('No preview available for this track');
+    current.info = r;
+    audio.src = r.previewUrl;
+    await audio.play();
+    $('status').textContent = 'Playing…';
+  } catch (e) {
+    $('status').innerHTML = '<span class="err">' + e.message + '</span>';
+  }
+}
+function replay() { if (audio.src) { audio.currentTime = 0; audio.play(); } }
+function toggleReveal() {
+  const el = $('reveal');
+  if (el.style.display === 'block') { el.style.display = 'none'; return; }
+  const i = current && current.info;
+  if (!i) return;
+  el.innerHTML = (i.artworkUrl100 ? '<img src="' + i.artworkUrl100.replace('100x100', '300x300') + '"><br>' : '') +
+    '<b>' + i.trackName + '</b><br>' + i.artistName + '<br>' +
+    (current.year ? 'Year on card: <b>' + current.year + '</b><br>' : '') +
+    '<small>Apple lists ' + (i.releaseDate || '').slice(0, 4) + ' for this recording</small>';
+  el.style.display = 'block';
+}
+audio.addEventListener('timeupdate', () => {
+  if (audio.duration) $('prog').style.width = (100 * audio.currentTime / audio.duration) + '%';
+});
+audio.addEventListener('ended', () => { $('status').textContent = 'Done — replay or scan the next card'; });
+
+// Opened from the phone's own camera app with #t=... : offer a PLAY button (that tap is the gesture)
+const fromHash = parseCode(location.hash);
+if (fromHash) {
+  current = fromHash;
+  $('startBtn').style.display = 'none';
+  $('playBtn').style.display = '';
+  $('homeHint').textContent = 'Tap play, then flip the phone face down.';
+}
+function playCurrent() { unlock(); playTrack(current); }
+</script>
+</body>
+</html>

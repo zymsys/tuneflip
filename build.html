@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deck Builder</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; margin: 0; background: #f4f4f8; color: #222; }
+  header { background: #2b1055; color: #fff; padding: 14px 20px; display: flex; align-items: center; gap: 16px; }
+  header h1 { font-size: 1.3rem; margin: 0; }
+  header small { opacity: .8; }
+  .wrap { display: grid; grid-template-columns: 240px 1fr; gap: 20px; padding: 20px; max-width: 1200px; margin: 0 auto; }
+  @media (max-width: 720px) { .wrap { grid-template-columns: 1fr; } }
+  aside, main { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .deck { padding: 10px 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+  .deck:hover { background: #f0f0f6; } .deck.sel { background: #e6e0f5; font-weight: 600; }
+  .swatch { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+  button.pri { background: #ff007f; color: #fff; border-color: #ff007f; font-weight: 600; }
+  button.danger { color: #b00020; }
+  button:disabled { opacity: .5; cursor: default; }
+  label { display: block; font-size: .85rem; color: #555; margin-bottom: 4px; }
+  input[type=text], input[type=url], textarea { font: inherit; padding: 8px; border: 1px solid #ccc; border-radius: 8px; width: 100%; }
+  input[type=color] { width: 44px; height: 36px; padding: 2px; border: 1px solid #ccc; border-radius: 8px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .field { min-width: 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; font-size: .92rem; }
+  td input[type=text] { padding: 4px 6px; border-radius: 6px; }
+  td.n { color: #999; width: 30px; } td.y input { width: 64px; } td.x { width: 30px; }
+  td img { width: 36px; height: 36px; border-radius: 4px; vertical-align: middle; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 14px 0; }
+  #log { font-size: .85rem; color: #555; white-space: pre-wrap; max-height: 120px; overflow: auto; }
+  .warn { background: #fff6e0; border-radius: 8px; padding: 10px; font-size: .9rem; margin-top: 12px; }
+  .hint { font-size: .85rem; color: #666; }
+</style>
+</head>
+<body>
+<header><h1>Deck Builder</h1><small>Decks are saved in this browser only &mdash; use Export to back up.</small></header>
+<div class="wrap">
+  <aside>
+    <div id="deckList"></div>
+    <div class="toolbar">
+      <button onclick="newDeck()">+ New deck</button>
+    </div>
+    <div class="toolbar">
+      <button onclick="exportDecks()">Export</button>
+      <button onclick="document.getElementById('importFile').click()">Import</button>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importDecks(this.files[0])">
+    </div>
+  </aside>
+
+  <main id="editor" style="display:none">
+    <div class="grid">
+      <div class="field"><label>Deck name (shown in the app and on the cards)</label><input type="text" id="dName" oninput="setDeck('name', this.value)"></div>
+      <div class="field"><label>Colours &nbsp;<span class="hint">accent / background</span></label>
+        <input type="color" id="dC1" oninput="setDeck('c1', this.value)">
+        <input type="color" id="dC2" oninput="setDeck('c2', this.value)">
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:14px"><label>Player app URL (goes into every QR code)</label><input type="url" id="appUrl"></div>
+
+    <label>Add songs &mdash; one per line: Apple Music song links, Apple Music album links (adds every track), or <code>Title - Artist</code></label>
+    <textarea id="addBox" rows="5" placeholder="https://music.apple.com/ca/album/cruel-summer/1440935467?i=1440935475
+Dynamite - BTS
+As It Was - Harry Styles"></textarea>
+    <div class="toolbar">
+      <button class="pri" id="addBtn" onclick="addSongs()">Add songs</button>
+      <span id="progress" class="hint"></span>
+    </div>
+    <div id="log"></div>
+
+    <table id="tracks"><thead><tr><th></th><th></th><th>Title</th><th>Artist</th><th>Year</th><th></th></tr></thead><tbody></tbody></table>
+    <div class="warn"><b>Check the years.</b> Apple reports the year of the <i>album version</i> it found &mdash; remasters and greatest-hits
+      collections show the wrong year. Edit the year column; what you type is what gets printed.</div>
+
+    <div class="toolbar" style="margin-top:20px">
+      <button class="pri" onclick="makePdf()">Download PDF cards</button>
+      <span class="hint">Letter, 9 cards per sheet, print double-sided &ldquo;flip on long edge&rdquo;.</span>
+      <span style="flex:1"></span>
+      <button class="danger" onclick="deleteDeck()">Delete deck</button>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+// ---------- storage ----------
+const KEY = 'hitster.decks';
+let decks = [], sel = null;
+function load() { try { decks = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { decks = []; } }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(decks)); } catch (e) { alert('Could not save: ' + e.message); } }
+const $ = id => document.getElementById(id);
+const deck = () => decks.find(d => d.id === sel);
+
+function newDeck() {
+  const d = { id: 'd' + Date.now(), name: 'My Deck', c1: '#ff007f', c2: '#2b1055', tracks: [] };
+  decks.push(d); sel = d.id; save(); render();
+}
+function deleteDeck() {
+  if (!confirm('Delete "' + deck().name + '" and its ' + deck().tracks.length + ' songs?')) return;
+  decks = decks.filter(d => d.id !== sel); sel = decks[0] ? decks[0].id : null; save(); render();
+}
+function setDeck(k, v) { deck()[k] = v; save(); renderList(); }
+function setTrack(i, k, v) { deck().tracks[i][k] = v; save(); }
+function removeTrack(i) { deck().tracks.splice(i, 1); save(); renderTracks(); }
+
+function exportDecks() {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(decks, null, 2)], { type: 'application/json' }));
+  a.download = 'hitster-decks.json'; a.click();
+}
+function importDecks(file) {
+  if (!file) return;
+  file.text().then(t => {
+    const incoming = JSON.parse(t);
+    for (const d of incoming) { const i = decks.findIndex(x => x.id === d.id); if (i >= 0) decks[i] = d; else decks.push(d); }
+    save(); render();
+  }).catch(e => alert('Import failed: ' + e.message));
+}
+
+// ---------- render ----------
+function render() { renderList(); renderEditor(); }
+function renderList() {
+  $('deckList').innerHTML = decks.map(d =>
+    `<div class="deck ${d.id === sel ? 'sel' : ''}" onclick="sel='${d.id}';render()">
+       <span class="swatch" style="background:${d.c1}"></span>${esc(d.name)} <small style="color:#999">${d.tracks.length}</small></div>`).join('') ||
+    '<p class="hint">No decks yet.</p>';
+}
+function renderEditor() {
+  const d = deck();
+  $('editor').style.display = d ? '' : 'none';
+  if (!d) return;
+  $('dName').value = d.name; $('dC1').value = d.c1; $('dC2').value = d.c2;
+  renderTracks();
+}
+function renderTracks() {
+  $('tracks').tBodies[0].innerHTML = deck().tracks.map((t, i) =>
+    `<tr><td class="n">${i + 1}</td><td>${t.art ? `<img src="${t.art}">` : ''}</td>
+     <td><input type="text" value="${esc(t.title)}" oninput="setTrack(${i},'title',this.value)"></td>
+     <td><input type="text" value="${esc(t.artist)}" oninput="setTrack(${i},'artist',this.value)"></td>
+     <td class="y"><input type="text" value="${esc(t.year)}" oninput="setTrack(${i},'year',this.value)"></td>
+     <td class="x"><button onclick="removeTrack(${i})" title="Remove">&times;</button></td></tr>`).join('');
+}
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+// ---------- iTunes resolver (JSONP; ~20 calls/min limit so we pace requests) ----------
+function jsonp(url) {
+  return new Promise((resolve, reject) => {
+    const cb = 'cb' + Date.now() + Math.floor(Math.random() * 1e6);
+    const s = document.createElement('script');
+    const done = () => { delete window[cb]; s.remove(); clearTimeout(timer); };
+    const timer = setTimeout(() => { done(); reject(new Error('timed out')); }, 10000);
+    window[cb] = d => { done(); resolve(d); };
+    s.onerror = () => { done(); reject(new Error('request failed')); };
+    s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cb;
+    document.head.appendChild(s);
+  });
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const toTrack = r => ({ id: String(r.trackId), title: r.trackName, artist: r.artistName,
+  year: (r.releaseDate || '').slice(0, 4), yearFetched: (r.releaseDate || '').slice(0, 4), art: r.artworkUrl100 });
+
+// Returns an array of tracks for one input line (may be several for an album link).
+async function resolveLine(line) {
+  let m;
+  if ((m = line.match(/[?&]i=(\d+)/)) || (m = line.match(/\/song\/[^/]+\/(\d+)/))) {
+    const d = await jsonp('https://itunes.apple.com/lookup?id=' + m[1]);
+    return d.results.filter(r => r.wrapperType === 'track').map(toTrack);
+  }
+  if ((m = line.match(/\/album\/[^/]+\/(\d+)/))) {
+    const d = await jsonp('https://itunes.apple.com/lookup?id=' + m[1] + '&entity=song');
+    return d.results.filter(r => r.wrapperType === 'track').map(toTrack);
+  }
+  // Free-text: fetch several, skip live/remix/karaoke variants, prefer the earliest release (closest to the original year)
+  const d = await jsonp('https://itunes.apple.com/search?term=' + encodeURIComponent(line) + '&entity=song&limit=8');
+  const junk = /\b(live|remix|karaoke|instrumental|acoustic|sped up|slowed|cover|tribute|demo|edit|version)\b/i;
+  let rs = d.results.filter(r => !junk.test(r.trackName));
+  if (!rs.length) rs = d.results;
+  rs.sort((a, b) => (a.releaseDate || '').localeCompare(b.releaseDate || ''));
+  return rs.slice(0, 1).map(toTrack);
+}
+
+async function addSongs() {
+  const lines = $('addBox').value.split('\n').map(s => s.trim()).filter(Boolean);
+  if (!lines.length) return;
+  $('addBtn').disabled = true; $('log').textContent = '';
+  const d = deck();
+  for (let i = 0; i < lines.length; i++) {
+    $('progress').textContent = `${i + 1} / ${lines.length}`;
+    try {
+      const found = await resolveLine(lines[i]);
+      if (!found.length) { log('❌ Not found: ' + lines[i]); continue; }
+      for (const t of found) {
+        if (d.tracks.some(x => x.id === t.id)) { log('↩ Already in deck: ' + t.title); continue; }
+        d.tracks.push(t); log('✅ ' + t.title + ' — ' + t.artist + ' (' + t.year + ')');
+      }
+      save(); renderTracks(); renderList();
+    } catch (e) { log('⚠ ' + lines[i] + ': ' + e.message); }
+    if (i < lines.length - 1) await sleep(3200);
+  }
+  $('addBox').value = ''; $('progress').textContent = 'Done'; $('addBtn').disabled = false;
+}
+function log(s) { $('log').textContent += s + '\n'; $('log').scrollTop = 1e9; }
+
+// ---------- PDF ----------
+// Letter, 3x3 grid of 63mm square cards. Fronts page then backs page per 9 cards;
+// backs have their columns mirrored so they line up when printed duplex, flipped on the long edge.
+const PAGE_W = 215.9, PAGE_H = 279.4, CARD = 63, COLS = 3, ROWS = 3, PER = COLS * ROWS;
+const MX = (PAGE_W - COLS * CARD) / 2, MY = (PAGE_H - ROWS * CARD) / 2;
+
+function appBase() {
+  const u = $('appUrl').value.trim();
+  return u.endsWith('/') || u.includes('.html') ? u : u + '/';
+}
+// Every card carries the deck branding, so any card can be the first one scanned.
+function songUrl(d, t) {
+  return appBase() + '?name=' + encodeURIComponent(d.name) + '&c1=' + d.c1.slice(1) + '&c2=' + d.c2.slice(1) +
+    '#t=' + t.id + '&y=' + encodeURIComponent(t.year || '');
+}
+
+function drawQr(doc, text, cx, cy, size) {
+  const qr = qrcode(0, 'M'); qr.addData(text); qr.make();
+  const n = qr.getModuleCount(), cell = size / n, ox = cx - size / 2, oy = cy - size / 2;
+  doc.setFillColor(0, 0, 0);
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+    if (qr.isDark(r, c)) doc.rect(ox + c * cell, oy + r * cell, cell + 0.02, cell + 0.02, 'F');
+}
+function cutMarks(doc) {
+  doc.setDrawColor(190); doc.setLineWidth(0.1);
+  for (let c = 0; c <= COLS; c++) doc.line(MX + c * CARD, 0, MX + c * CARD, PAGE_H);
+  for (let r = 0; r <= ROWS; r++) doc.line(0, MY + r * CARD, PAGE_W, MY + r * CARD);
+}
+function fitText(doc, text, width, maxLines) {
+  const lines = doc.splitTextToSize(String(text || ''), width);
+  if (lines.length > maxLines) { lines.length = maxLines; lines[maxLines - 1] = lines[maxLines - 1].replace(/.{2}$/, '…'); }
+  return lines;
+}
+function drawFront(doc, d, card, x, y) {
+  const cx = x + CARD / 2;
+  doc.setFillColor(d.c2); doc.rect(x, y, CARD, CARD, 'F');
+  doc.setDrawColor(d.c1); doc.setLineWidth(0.6); doc.rect(x + 2.5, y + 2.5, CARD - 5, CARD - 5, 'S');
+  doc.setTextColor(255);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  doc.text(fitText(doc, card.artist, CARD - 10, 2), cx, y + 12, { align: 'center' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(34);
+  doc.text(String(card.year || '????'), cx, y + 37, { align: 'center' });
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(10);
+  doc.text(fitText(doc, card.title, CARD - 10, 2), cx, y + 49, { align: 'center' });
+}
+function drawBack(doc, d, card, x, y) {
+  const cx = x + CARD / 2;
+  doc.setFillColor(255); doc.rect(x, y, CARD, CARD, 'F');
+  doc.setDrawColor(d.c1); doc.setLineWidth(0.6); doc.rect(x + 2.5, y + 2.5, CARD - 5, CARD - 5, 'S');
+  drawQr(doc, songUrl(d, card), cx, y + CARD / 2 - 3, 40);
+  doc.setTextColor(d.c2); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+  doc.text(d.name, cx, y + CARD - 7, { align: 'center' });
+}
+function makePdf() {
+  const d = deck();
+  if (!d.tracks.length) { alert('Add some songs first.'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+  const cards = d.tracks;
+  for (let p = 0; p < cards.length; p += PER) {
+    const chunk = cards.slice(p, p + PER);
+    if (p > 0) doc.addPage();
+    chunk.forEach((card, i) => drawFront(doc, d, card, MX + (i % COLS) * CARD, MY + Math.floor(i / COLS) * CARD));
+    cutMarks(doc);
+    doc.addPage();
+    chunk.forEach((card, i) => drawBack(doc, d, card, MX + (COLS - 1 - i % COLS) * CARD, MY + Math.floor(i / COLS) * CARD));
+    cutMarks(doc);
+  }
+  doc.save(d.name.replace(/[^\w\- ]+/g, '') + ' cards.pdf');
+}
+
+// ---------- init ----------
+$('appUrl').value = location.protocol === 'file:' ? 'https://zymsys.github.io/hitster/'
+  : location.origin + location.pathname.replace(/build\.html$/, '');
+load(); sel = decks[0] ? decks[0].id : null; render();
+</script>
+</body>
+</html>
