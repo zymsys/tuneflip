@@ -160,10 +160,16 @@ async function startScan() {
   show('scan');
   $('scanStatus').textContent = 'Starting camera…';
   try {
-    // iOS hands out 640x480 unless asked; a dense QR needs more pixels than that
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
-    video.srcObject = stream;
+    // Keep one stream for the whole session: stopping and re-requesting makes iOS ask permission every time.
+    if (stream && stream.getVideoTracks().some(t => t.readyState === 'live')) {
+      stream.getVideoTracks().forEach(t => { t.enabled = true; });
+    } else {
+      // iOS hands out 640x480 unless asked; a dense QR needs more pixels than that
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      video.srcObject = stream;
+    }
+    scanning = true;
     await video.play();
   } catch (e) {
     show('home');
@@ -174,12 +180,15 @@ async function startScan() {
   requestAnimationFrame(tick);
 }
 let frames = 0;
+let scanning = false;
+// Pause scanning but keep the camera permission: mute the track and stop pulling frames.
 function stopScan() {
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  video.srcObject = null;
+  scanning = false;
+  if (stream) stream.getVideoTracks().forEach(t => { t.enabled = false; });
+  video.pause();
 }
 function tick() {
-  if (!stream) return;
+  if (!scanning || !stream) return;
   try {
     const vw = video.videoWidth, vh = video.videoHeight;
     if (vw && vh) {
