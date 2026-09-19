@@ -66,7 +66,8 @@
         <img id="logoPreview" style="height:36px;display:none"></div></div>
     </div>
 
-    <label>Add songs &mdash; one per line: Apple Music song links, Apple Music album links (adds every track), or <code>Title - Artist</code></label>
+    <label>Add songs &mdash; one per line: Apple Music song links, album links (adds every track), or <code>Title - Artist</code>.
+      A line like <code>--- 2016 ---</code> or <code>Some heading (2016):</code> sets the year for the songs under it.</label>
     <textarea id="addBox" rows="5" placeholder="https://music.apple.com/ca/album/cruel-summer/1440935467?i=1440935475
 Dynamite - BTS
 As It Was - Harry Styles"></textarea>
@@ -208,6 +209,8 @@ const toTrack = r => ({ id: String(r.trackId), title: r.trackName, artist: r.art
 // Returns an array of tracks for one input line (may be several for an album link).
 async function resolveLine(line) {
   let m;
+  const parts = line.split(/\s+[-\u2013\u2014]\s+/);           // "Title - Artist"
+  const artist = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
   if ((m = line.match(/[?&]i=(\d+)/)) || (m = line.match(/\/song\/[^/]+\/(\d+)/))) {
     const d = await jsonp('https://itunes.apple.com/lookup?id=' + m[1]);
     return d.results.filter(r => r.wrapperType === 'track').map(toTrack);
@@ -221,6 +224,10 @@ async function resolveLine(line) {
   const junk = /\b(live|remix|karaoke|instrumental|acoustic|sped up|slowed|cover|tribute|demo|edit|version)\b/i;
   let rs = d.results.filter(r => !junk.test(r.trackName));
   if (!rs.length) rs = d.results;
+  if (artist) {                                        // prefer results by the named artist
+    const byArtist = rs.filter(r => (r.artistName || '').toLowerCase().includes(artist.split(/\s*(?:feat\.?|ft\.?|&|,|x)\s+/i)[0]));
+    if (byArtist.length) rs = byArtist;
+  }
   rs.sort((a, b) => (a.releaseDate || '').localeCompare(b.releaseDate || ''));
   return rs.slice(0, 1).map(toTrack);
 }
@@ -230,10 +237,15 @@ async function addSongs() {
   if (!lines.length) return;
   $('addBtn').disabled = true; $('log').textContent = '';
   const d = deck();
+  let year = '';                                       // set by "--- 2016 ---" or "Heading (2016):" lines
   for (let i = 0; i < lines.length; i++) {
     $('progress').textContent = `${i + 1} / ${lines.length}`;
+    let m;
+    if ((m = lines[i].match(/^-+\s*(\d{4})\s*-+$/)) || (m = lines[i].match(/\((\d{4})\)\s*:?\s*$/))) { year = m[1]; continue; }
+    if (/^[-=]{3,}$/.test(lines[i]) || /:$/.test(lines[i]) || (!/\s[-\u2013\u2014]\s/.test(lines[i]) && lines[i].split(' ').length > 6)) continue;
     try {
       const found = await resolveLine(lines[i]);
+      if (year) found.forEach(t => { t.year = year; });
       if (!found.length) { log('❌ Not found: ' + lines[i]); continue; }
       for (const t of found) {
         if (d.tracks.some(x => x.id === t.id)) { log('↩ Already in deck: ' + t.title); continue; }
